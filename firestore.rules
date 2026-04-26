@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Resource validation
+    function isValidResource(data) {
+      return data.id is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.role is string && data.role.size() <= 100 &&
+             data.skills is list && data.skills.size() <= 20 &&
+             data.availability is number && data.availability >= 0 && data.availability <= 100 &&
+             data.ownerId == request.auth.uid;
+    }
+
+    // Task validation
+    function isValidTask(data) {
+      return data.id is string &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.priority in ['low', 'medium', 'high'] &&
+             data.requiredSkills is list && data.requiredSkills.size() <= 20 &&
+             data.estimatedHours is number && data.estimatedHours > 0 &&
+             data.ownerId == request.auth.uid;
+    }
+
+    // Report validation
+    function isValidReport(data) {
+      return data.summary is string && data.summary.size() <= 10000 &&
+             data.efficiencyScore is number && data.efficiencyScore >= 0 && data.efficiencyScore <= 1 &&
+             data.allocations is list && data.allocations.size() <= 100 &&
+             data.createdAt is string &&
+             data.ownerId == request.auth.uid;
+    }
+
+    // Connection Test Path
+    match /test/connection {
+      allow read: if isSignedIn();
+    }
+
+    match /resources/{resourceId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidResource(incoming()) && isValidId(resourceId);
+      allow update: if isSignedIn() && isOwner(resource.data.ownerId) && isValidResource(incoming()) &&
+                    incoming().ownerId == resource.data.ownerId;
+      allow delete: if isSignedIn() && isOwner(resource.data.ownerId);
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidTask(incoming()) && isValidId(taskId);
+      allow update: if isSignedIn() && isOwner(resource.data.ownerId) && isValidTask(incoming()) &&
+                    incoming().ownerId == resource.data.ownerId;
+      allow delete: if isSignedIn() && isOwner(resource.data.ownerId);
+    }
+
+    match /reports/{reportId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidReport(incoming()) && isValidId(reportId);
+      allow delete: if isSignedIn() && isOwner(resource.data.ownerId);
+    }
+  }
+}

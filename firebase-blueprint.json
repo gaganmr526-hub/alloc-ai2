@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "Resource": {
+      "title": "Resource",
+      "description": "Team member or asset available for allocation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "availability": { "type": "number" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["id", "name", "role", "skills", "availability", "ownerId"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A unit of work requiring resources",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "requiredSkills": { "type": "array", "items": { "type": "string" } },
+        "estimatedHours": { "type": "number" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["id", "title", "priority", "requiredSkills", "estimatedHours", "ownerId"]
+    },
+    "Report": {
+      "title": "Allocation Report",
+      "description": "AI-generated allocation plan",
+      "type": "object",
+      "properties": {
+        "summary": { "type": "string" },
+        "efficiencyScore": { "type": "number" },
+        "allocations": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["summary", "efficiencyScore", "allocations", "createdAt", "ownerId"]
+    }
+  },
+  "firestore": {
+    "resources/{resourceId}": {
+      "schema": "Resource",
+      "description": "User's team members"
+    },
+    "tasks/{taskId}": {
+      "schema": "Task",
+      "description": "User's pending tasks"
+    },
+    "reports/{reportId}": {
+      "schema": "Report",
+      "description": "Historical allocation reports"
+    }
+  }
+}
