@@ -4,7 +4,7 @@
  */
 
 import { Resource, Task, AllocationReport } from "../types";
-
+ 
 export async function generateAllocation(resources: Resource[], tasks: Task[]): Promise<AllocationReport> {
   try {
     const response = await fetch("/api/allocate", {
