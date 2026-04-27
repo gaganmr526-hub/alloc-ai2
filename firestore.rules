@@ -48,6 +48,7 @@ service cloud.firestore {
       return data.summary is string && data.summary.size() <= 10000 &&
              data.efficiencyScore is number && data.efficiencyScore >= 0 && data.efficiencyScore <= 1 &&
              data.allocations is list && data.allocations.size() <= 100 &&
+             data.aiSuggestions is list && data.aiSuggestions.size() <= 10 &&
              data.createdAt is string &&
              data.ownerId == request.auth.uid;
     }

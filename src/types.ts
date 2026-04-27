@@ -33,4 +33,5 @@ export interface AllocationReport {
   allocations: AllocationProposal[];
   summary: string;
   efficiencyScore: number;
+  aiSuggestions: string[];
 }

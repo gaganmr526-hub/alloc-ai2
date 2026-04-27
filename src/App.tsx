@@ -20,8 +20,25 @@ import {
   LogIn,
   LogOut,
   History,
-  FileText
+  FileText,
+  Lightbulb,
+  BarChart3,
+  Database,
+  Share2
 } from 'lucide-react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  Cell,
+  PieChart,
+  Pie,
+  Legend
+} from 'recharts';
 import { Resource, Task, AllocationReport, Priority } from './types';
 import { INITIAL_RESOURCES, INITIAL_TASKS } from './constants';
 import { generateAllocation } from './services/geminiService';
@@ -143,6 +160,22 @@ export default function App() {
       setHistory(snap.docs.map(d => ({ ...d.data(), id: d.id } as AllocationReport & { id: string })));
       setError(null);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'reports', setError));
+
+    // Auto-seed if empty
+    const checkAndSeed = async () => {
+      try {
+        const resSnap = await getDocs(qRes);
+        const taskSnap = await getDocs(qTasks);
+        if (resSnap.empty && taskSnap.empty) {
+          console.log("Database empty, auto-seeding...");
+          for (const r of INITIAL_RESOURCES) await setDoc(doc(db, 'resources', r.id), { ...r, ownerId: user.uid });
+          for (const t of INITIAL_TASKS) await setDoc(doc(db, 'tasks', t.id), { ...t, ownerId: user.uid });
+        }
+      } catch (err) {
+        console.warn("Auto-seed check failed (likely network/permissions):", err);
+      }
+    };
+    checkAndSeed();
 
     return () => {
       unsubscribeRes();
@@ -344,8 +377,19 @@ export default function App() {
             onClick={resetData}
             className="w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all hover:bg-slate-800 text-slate-500 hover:text-white"
           >
-            <Trash2 className="w-5 h-5 opacity-70" />
-            <span className="font-medium">Reset Baseline</span>
+            <Database className="w-5 h-5 opacity-70" />
+            <span className="font-medium">Reset & Seed Data</span>
+          </button>
+
+          <button 
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.origin);
+              alert("Project URL copied to clipboard! Share this link with others.");
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all hover:bg-slate-800 text-slate-500 hover:text-white"
+          >
+            <Share2 className="w-5 h-5 opacity-70" />
+            <span className="font-medium">Share Project</span>
           </button>
         </div>
 
@@ -520,17 +564,88 @@ export default function App() {
               <motion.div key="results" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="max-w-6xl mx-auto space-y-8">
                 {report && (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
                         <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Efficiency Rating</p>
                         <p className="text-5xl font-bold text-indigo-600">{(report.efficiencyScore * 100).toFixed(0)}%</p>
+                        <p className="text-[10px] text-slate-400 mt-2 font-medium">Higher is better</p>
                       </div>
-                      <div className="md:col-span-3 bg-slate-900 text-white p-8 rounded-xl relative overflow-hidden shadow-lg">
+                      
+                      <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4 text-indigo-500" /> Allocation Confidence scores
+                        </p>
+                        <div className="h-[140px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={report.allocations.map(a => ({ name: tasks.find(t => t.id === a.taskId)?.title.substring(0, 10) + '...', confidence: a.confidence * 100 }))}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                              <XAxis dataKey="name" hide />
+                              <YAxis hide domain={[0, 100]} />
+                              <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                              <Bar dataKey="confidence" radius={[4, 4, 0, 0]} barSize={30}>
+                                {report.allocations.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={entry.confidence > 0.8 ? '#10b981' : entry.confidence > 0.5 ? '#6366f1' : '#f59e0b'} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <Users className="w-4 h-4 text-indigo-500" /> Workload Share
+                        </p>
+                        <div className="h-[140px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={resources.map(r => ({
+                                  name: r.name,
+                                  value: report.allocations.filter(a => a.resourceId === r.id).length
+                                })).filter(d => d.value > 0)}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={40}
+                                outerRadius={60}
+                                paddingAngle={5}
+                                dataKey="value"
+                              >
+                                {resources.map((_, index) => (
+                                  <Cell key={`cell-${index}`} fill={['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'][index % 5]} />
+                                ))}
+                              </Pie>
+                              <Tooltip contentStyle={{ fontSize: '10px', borderRadius: '4px' }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="bg-slate-900 text-white p-8 rounded-xl relative overflow-hidden shadow-lg border border-slate-800 flex flex-col justify-center min-h-[180px]">
                         <div className="relative z-10">
                           <p className="text-indigo-400 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <BrainCircuit className="w-4 h-4" /> AI Insight
+                            <BrainCircuit className="w-4 h-4" /> AI Strategic Overview
                           </p>
-                          <p className="text-xl font-medium leading-relaxed italic opacity-90 leading-tight">"{report.summary}"</p>
+                          <p className="text-xl font-medium leading-relaxed italic opacity-90">"{report.summary}"</p>
+                        </div>
+                        <div className="absolute -bottom-10 -right-10 p-4 opacity-5">
+                          <BrainCircuit size={180} />
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-indigo-50 to-white p-8 rounded-xl border border-indigo-100 shadow-sm relative overflow-hidden">
+                        <p className="text-indigo-600 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
+                          <Lightbulb className="w-4 h-4" /> Optimization Recommendations
+                        </p>
+                        <div className="grid grid-cols-1 gap-3">
+                          {report.aiSuggestions.map((suggestion, idx) => (
+                            <div key={idx} className="flex items-start gap-4 p-3 bg-white/60 rounded-lg border border-white group hover:border-indigo-200 transition-all">
+                              <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-sm">{idx + 1}</span>
+                              <p className="text-sm text-slate-700 font-medium leading-normal">{suggestion}</p>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
