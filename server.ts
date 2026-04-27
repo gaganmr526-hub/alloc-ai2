@@ -1,8 +1,8 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import fs from "fs";
 
 dotenv.config();
 
@@ -16,22 +16,32 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Vite middleware or static serving
-  console.log(`Mode: ${isProduction ? "production" : "development"}`);
-  
-  if (isProduction) {
+  // Request logging middleware
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+  });
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", mode: isProduction ? "production" : "development" });
+  });
+
+  // Vite middleware for development
+  if (!isProduction) {
+    const { createServer } = await import("vite");
+    const vite = await createServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+      root: process.cwd(),
+    });
+    app.use(vite.middlewares);
+  } else {
     const distPath = path.join(process.cwd(), "dist");
-    console.log(`Serving static files from: ${distPath}`);
+    console.log(`Production mode: Serving static files from: ${distPath}`);
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
-  } else {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
   }
 
   app.listen(PORT, "0.0.0.0", () => {

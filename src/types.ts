@@ -34,4 +34,6 @@ export interface AllocationReport {
   summary: string;
   efficiencyScore: number;
   aiSuggestions: string[];
+  createdAt?: string;
+  ownerId?: string;
 }

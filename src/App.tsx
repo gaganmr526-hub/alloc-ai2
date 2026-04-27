@@ -112,6 +112,61 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab ] = useState<'input' | 'results' | 'history'>('input');
   const [error, setError ] = useState<string | null>(null);
+  const [tryHeuristic, setTryHeuristic] = useState(false);
+
+  // Heuristic fallback for when AI is unavailable
+  const generateHeuristicAllocation = (resList: Resource[], taskList: Task[]): AllocationReport => {
+    const allocations: any[] = [];
+    const sortedTasks = [...taskList].sort((a, b) => b.priority === 'high' ? 1 : -1);
+    const availableRes = [...resList];
+
+    sortedTasks.forEach((task, index) => {
+      // Simple round-robin for fallback
+      const resource = availableRes[index % availableRes.length];
+      if (resource) {
+        allocations.push({
+          taskId: task.id,
+          resourceId: resource.id,
+          reason: "Fallback heuristic applied due to service availability. Tasks prioritized by priority level."
+        });
+      }
+    });
+
+    return {
+      summary: "Manual heuristic plan generated (AI services currently under high load). This plan balances workload across available resources based on task priority.",
+      efficiencyScore: 0.7,
+      aiSuggestions: [
+        "System is currently in fallback mode.",
+        "Consider manually reviewing task assignments.",
+        "Retry AI analysis when demand decreases."
+      ],
+      allocations,
+      createdAt: new Date().toISOString(),
+      ownerId: user?.uid || ''
+    };
+  };
+
+  const useFallback = async () => {
+    if (!user) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = generateHeuristicAllocation(resources, tasks);
+      setReport(result);
+      const reportId = `rep-fallback-${Date.now()}`;
+      await setDoc(doc(db, 'reports', reportId), { 
+        ...result, 
+        ownerId: user.uid,
+        createdAt: new Date().toISOString()
+      });
+      setTryHeuristic(false);
+      setActiveTab('results');
+    } catch (err) {
+      setError("Fallback generation failed.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Auth State
   useEffect(() => {
@@ -287,6 +342,7 @@ export default function App() {
     setIsLoading(true);
     setReport(null);
     setError(null);
+    setTryHeuristic(false);
     try {
       const result = await generateAllocation(resources, tasks);
       setReport(result);
@@ -300,8 +356,14 @@ export default function App() {
       });
       
       setActiveTab('results');
-    } catch (err) {
-      setError("Failed to generate allocation. Check API key or connection.");
+    } catch (err: any) {
+      const isQuota = err.message?.includes('429') || err.message?.toLowerCase().includes('quota') || err.message?.toLowerCase().includes('demand');
+      if (isQuota) {
+        setError("AI services are currently overloaded. Would you like to use the Smart Fallback?");
+        setTryHeuristic(true);
+      } else {
+        setError("AI Analysis failed. Check connection or try again later.");
+      }
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -443,9 +505,20 @@ export default function App() {
               >
                 {error && (
                   <div className="col-span-full">
-                    <div className="bg-red-50 border border-red-100 p-4 rounded-xl flex items-center gap-3 text-red-700">
-                      <AlertCircle className="shrink-0 w-5 h-5" />
-                      <p className="text-sm font-medium">{error}</p>
+                    <div className="bg-red-50 border border-red-100 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-red-700">
+                      <div className="flex items-center gap-3">
+                        <AlertCircle className="shrink-0 w-5 h-5" />
+                        <p className="text-sm font-medium">{error}</p>
+                      </div>
+                      {tryHeuristic && (
+                        <button 
+                          onClick={useFallback}
+                          className="bg-white border border-red-200 px-4 py-2 rounded-lg text-xs font-bold text-red-600 hover:bg-red-100 transition-all shadow-sm shrink-0 flex items-center gap-2"
+                        >
+                          <BrainCircuit className="w-4 h-4" />
+                          Apply Smart Fallback
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
