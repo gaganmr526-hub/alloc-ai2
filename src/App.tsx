@@ -41,7 +41,6 @@ import {
 } from 'recharts';
 import { Resource, Task, AllocationReport, Priority } from './types';
 import { INITIAL_RESOURCES, INITIAL_TASKS } from './constants';
-import { generateAllocation } from './services/geminiService';
 import { auth, db, signIn, signOut } from './firebase';
 import { 
   collection, 
@@ -127,7 +126,8 @@ export default function App() {
         allocations.push({
           taskId: task.id,
           resourceId: resource.id,
-          reason: "Fallback heuristic applied due to service availability. Tasks prioritized by priority level."
+          reasoning: "Fallback heuristic applied due to service availability. Tasks prioritized by priority level.",
+          confidence: 0.8
         });
       }
     });
@@ -344,7 +344,18 @@ export default function App() {
     setError(null);
     setTryHeuristic(false);
     try {
-      const result = await generateAllocation(resources, tasks);
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resources, tasks })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server responded with ${response.status}`);
+      }
+
+      const result = await response.json();
       setReport(result);
       
       // Save report
@@ -357,14 +368,22 @@ export default function App() {
       
       setActiveTab('results');
     } catch (err: any) {
-      const isQuota = err.message?.includes('429') || err.message?.toLowerCase().includes('quota') || err.message?.toLowerCase().includes('demand');
-      if (isQuota) {
-        setError("AI services are currently overloaded. Would you like to use the Smart Fallback?");
+      const errorMessage = err.message?.toLowerCase() || '';
+      const status = err.status || err.code || 0;
+      
+      const isTransient = 
+        status === 429 || status === 503 || status === 500 || 
+        errorMessage.includes('429') || errorMessage.includes('quota') || 
+        errorMessage.includes('demand') || errorMessage.includes('overloaded') ||
+        errorMessage.includes('server error');
+
+      if (isTransient) {
+        setError("AI services are currently busy or overloaded. Would you like to use the Smart Fallback?");
         setTryHeuristic(true);
       } else {
-        setError("AI Analysis failed. Check connection or try again later.");
+        setError(`AI Analysis failed: ${err.message || "Unknown error"}. Check connection or try again.`);
       }
-      console.error(err);
+      console.error("Allocation Error Trace:", err);
     } finally {
       setIsLoading(false);
     }
